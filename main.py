@@ -2,9 +2,10 @@ import sys  # System functions to shut down program properly
 from array import array  # Faster than lists
 import moderngl  # Used to apply shaders in Python
 import pygame  # Graphics library
+import os # OS functions for directory iteration
 
 # Initialize pygame and create the display surface
-screen = pygame.display.set_mode((1280, 720), pygame.OPENGL | pygame.DOUBLEBUF)  # Creates window for OpenGL
+screen = pygame.display.set_mode((1280, 720), pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE)  # Creates window for OpenGL
 display = pygame.Surface((1280, 720))  # Will render everything onto a display, then added to the screen
 clock = pygame.time.Clock()  # For setting framerate
 
@@ -35,62 +36,68 @@ class Shaders:
             -1.0, -1.0, 0.0, 1.0,  # Bottom-left corner
             1.0, -1.0, 1.0, 1.0    # Bottom-right corner
         ]))
-
-        # Create the shader program with vertex and fragment shaders
-        self.program = self.ctx.program(vertex_shader=self.vert_shader(), fragment_shader=self.frag_shader())
-        self.render_object = self.ctx.vertex_array(self.program, [(self.quad_buffer, '2f 2f', 'vert', 'texcoord')])
-
-    def vert_shader(self) -> str:
-        """Returns the vertex shader code as a string."""
-        return '''
-        #version 330 core
-
-        in vec2 vert;      // Vertex position
-        in vec2 texcoord;  // Texture coordinates
-        out vec2 uvs;      // Pass texture coordinates to the fragment shader
-
-        void main() {
-            uvs = texcoord;                      // Pass texture coordinates
-            gl_Position = vec4(vert, 0.0, 1.0);  // Set clip-space position
-        }
-        '''
-
-    def frag_shader(self) -> str:
-        """Returns the fragment shader code as a string."""
-        return '''
-        #version 330 core
-
-        uniform sampler2D tex;        // Base texture
-        uniform sampler2D glowMask;   // Glow mask texture
-        uniform float time;           // Time for animation (optional)
-
-        in vec2 uvs;                  // Texture coordinates from vertex shader
-        out vec4 f_color;             // Final fragment color output
-
-        void main() {
-            // Fetch the base texture color
-            vec4 baseColor = texture(tex, uvs);
-
-            // Fetch the glow mask (defines glowing areas)
-            vec4 glow = texture(glowMask, uvs);
-
-            // Animate glow intensity using a sine wave
-            float glowIntensity = 0.6 + 0.4 * sin(time * 2.0); // Subtle pulse
-
-            // Define a mysterious glow color (cool tones)
-            vec3 glowColor = vec3(0.3, 0.1, 0.5) * glow.rgb * glowIntensity;
-
-            // Blend the glow with the base texture
-            vec3 blendedColor = mix(baseColor.rgb, glowColor + baseColor.rgb, 0.5);
-
-            // Darken the background slightly for contrast
-            float darkenFactor = 0.85;
-            vec3 finalColor = blendedColor * (1.0 - 0.2 * (1.0 - glow.a)) * darkenFactor;
-
-            // Set the final output color
-            f_color = vec4(finalColor, baseColor.a); // Preserve alpha
-        }
-        '''
+        
+        # Fragment and vertex file dictionaries for storing filenames and corresponding content
+        self.fragfile_contents = {}
+        self.vertfile_contents = {}
+        
+        # Fragment and vertex file directories
+        self.fragment_directory = 'fragment_shaders/'
+        self.vertex_directory ='vertex_shaders/'
+        
+        # Read the files from fragment and vertex shader directories and store in the corresponding dictionaries
+        self.fragment_shaders()
+        self.vertex_shaders()
+        
+        # Create lists from the frag and vertex dictionary keys so they can be indexed numerically
+        self.frag_keys = list(self.fragfile_contents.keys())
+        self.vert_keys = list(self.vertfile_contents.keys())
+        self.currentfragfile = 0
+        self.currentvertfile = 0
+        
+        # Create the initial shader program with vertex and fragment shaders
+        self.update_shader()
+        
+    def fragment_shaders(self):
+        # Loop through each file in the directory
+        for filename in os.listdir(self.fragment_directory):
+            file_path = os.path.join(self.fragment_directory, filename)
+            
+            # Check if it's a file (not a directory)
+            if os.path.isfile(file_path):
+                # Open and read the file's content
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                    # Store the filename and content in the dictionary
+                    self.fragfile_contents[filename] = content
+  
+    
+    def vertex_shaders(self):
+        # Loop through each file in the directory
+        for filename in os.listdir(self.vertex_directory):
+            file_path = os.path.join(self.vertex_directory, filename)
+            
+            # Check if it's a file (not a directory)
+            if os.path.isfile(file_path):
+                # Open and read the file's content
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                    # Store the filename and content in the dictionary
+                    self.vertfile_contents[filename] = content
+                    
+    def update_shader(self):
+        """Recompile and update the shader program with the current fragment shader."""
+        # Update the shader program with the updated fragment shader
+        self.program = self.ctx.program(
+            vertex_shader=self.vertfile_contents[self.vert_keys[self.currentvertfile]],
+            fragment_shader=self.fragfile_contents[self.frag_keys[self.currentfragfile]]
+        )
+        
+        # Update the render object (VAO) to bind the updated program
+        self.render_object = self.ctx.vertex_array(
+            self.program, 
+            [(self.quad_buffer, '2f 2f', 'vert', 'texcoord')]
+        )
 
     def surf_to_texture(self, surf):
         """Converts a pygame surface to an OpenGL texture."""
@@ -109,6 +116,7 @@ class Shaders:
 
         # Flip the display to show updated texture
         pygame.display.flip()
+        # Release the texture
         frame_tex.release()
 
 
@@ -128,6 +136,17 @@ while True:
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
             pygame.quit()
             sys.exit()
+            
+        # Handle keypresses to cycle through shaders
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_d:
+                shader.currentfragfile += 1
+                shader.currentfragfile %= len(shader.frag_keys)
+                shader.update_shader()
+            if event.key == pygame.K_a:
+                shader.currentfragfile -= 1
+                shader.currentfragfile %= len(shader.frag_keys)
+                shader.update_shader()
 
     # Call the shader to render and release the texture onto the display
     shader.frame_texture()
@@ -135,5 +154,6 @@ while True:
     # Blit the rendered content to the screen
     screen.blit(display, (0, 0))
 
-    # Set the framerate to 30 FPS
-    clock.tick(30)
+    # Set the framerate to 60 FPS
+    clock.tick(60)
+    
