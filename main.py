@@ -12,7 +12,14 @@ clock = pygame.time.Clock()  # For setting framerate
 img = pygame.image.load('bike.png')
 img = pygame.transform.scale(img, screen.get_size())
 
+# Load and set window icon
+def window_config(icon, caption=''):
+    icon = pygame.image.load(icon)
+    pygame.transform.scale(icon, (32, 32))
+    pygame.display.set_icon(icon)
+    pygame.display.set_caption(caption)
 
+window_config('icon.png', 'Image Processer')
 class Shaders:
     """Shader class for setting up and using shaders."""
     
@@ -111,7 +118,7 @@ shader = Shaders(display)
 # Main loop to keep the window open
 while True:
     # Fill display with black background
-    display.fill((0, 0, 0))
+    display.fill((0, 0, 0)) 
 
     # Render the bike image onto the display surface
     display.blit(img, (0, 0))
