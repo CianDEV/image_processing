@@ -167,6 +167,6 @@ while True:
     # Blit the rendered content to the screen
     screen.blit(display, (0, 0))
 
-    # Set the framerate to 60 FPS
+    # Set the framerate to 30 FPS
     clock.tick(30)
     
